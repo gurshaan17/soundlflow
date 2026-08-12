@@ -14,6 +14,7 @@ about what is actually implemented.
 ---
 
 ## Architecture
+![SoundFlow architecture](architecture.png)
 
 ```
                      POST /v1/episodes (Idempotency-Key)
