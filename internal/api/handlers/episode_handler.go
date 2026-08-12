@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -115,6 +116,16 @@ func (h *EpisodeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, domain.ErrShowNotFound):
 			writeError(w, http.StatusBadRequest, "show not found")
 		case errors.Is(err, domain.ErrEpisodeConflict):
+			// The episode uniqueness violation is usually a genuine duplicate
+			// posted under a different key, but it also happens when a
+			// concurrent request with this same key already created the
+			// episode. Distinguish by checking whether a job for our key exists.
+			if rerr := tx.Rollback(ctx); rerr != nil {
+				h.logger.Error("rollback after episode conflict", "error", rerr)
+			}
+			if h.returnIdempotentReplay(ctx, w, idemKey) {
+				return
+			}
 			writeError(w, http.StatusConflict, "episode already exists")
 		default:
 			h.logger.Error("insert episode", "error", err)
@@ -137,13 +148,7 @@ func (h *EpisodeHandler) Create(w http.ResponseWriter, r *http.Request) {
 			if rerr := tx.Rollback(ctx); rerr != nil {
 				h.logger.Error("rollback after idempotency conflict", "error", rerr)
 			}
-			winner, getErr := h.store.Jobs.GetByIDempotencyKey(ctx, h.store.Pool(), idemKey)
-			if getErr != nil {
-				h.logger.Error("refetch idempotent job", "error", getErr)
-				writeError(w, http.StatusInternalServerError, "internal server error")
-				return
-			}
-			h.writeCreateResponse(w, http.StatusOK, winner)
+			h.returnIdempotentReplay(ctx, w, idemKey)
 			return
 		}
 		h.logger.Error("insert job", "error", err)
@@ -261,6 +266,22 @@ func (h *EpisodeHandler) writeCreateResponse(w http.ResponseWriter, status int, 
 		JobID:     job.ID,
 		Status:    string(job.Status),
 	})
+}
+
+// returnIdempotentReplay writes 200 with the job already created for idemKey.
+// It reports whether such a job exists.
+func (h *EpisodeHandler) returnIdempotentReplay(ctx context.Context, w http.ResponseWriter, idemKey string) bool {
+	existing, err := h.store.Jobs.GetByIDempotencyKey(ctx, h.store.Pool(), idemKey)
+	if err == nil {
+		h.writeCreateResponse(w, http.StatusOK, existing)
+		return true
+	}
+	if !errors.Is(err, domain.ErrJobNotFound) {
+		h.logger.Error("refetch idempotent job", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return true
+	}
+	return false
 }
 
 func strPtrOrNil(s string) *string {
