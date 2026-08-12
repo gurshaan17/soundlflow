@@ -40,11 +40,11 @@ type Job struct {
 type JobStepStatus string
 
 const (
-	JobStepStatusPending  JobStepStatus = "PENDING"
-	JobStepStatusRunning  JobStepStatus = "RUNNING"
-	JobStepStatusSuccess  JobStepStatus = "SUCCESS"
-	JobStepStatusFailed   JobStepStatus = "FAILED"
-	JobStepStatusSkipped  JobStepStatus = "SKIPPED"
+	JobStepStatusPending JobStepStatus = "PENDING"
+	JobStepStatusRunning JobStepStatus = "RUNNING"
+	JobStepStatusSuccess JobStepStatus = "SUCCESS"
+	JobStepStatusFailed  JobStepStatus = "FAILED"
+	JobStepStatusSkipped JobStepStatus = "SKIPPED"
 )
 
 type JobStep struct {
